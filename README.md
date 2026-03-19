@@ -2,6 +2,10 @@
 
 Gemini Embedding 2 (`gemini-embedding-2-preview`) を使った、テキストと画像のクロスモーダル検索デモアプリ。BwAI 2026 向け。
 
+## Colab Notebook
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1xYsUFGPLsV-vCqznhTqlwh9pSTi_Yc9W)
+
 ## セットアップ
 
 ### 前提条件
