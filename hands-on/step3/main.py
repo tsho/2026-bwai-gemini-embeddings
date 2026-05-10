@@ -1,0 +1,205 @@
+"""STEP 3: Web API + UI 化.
+
+STEP2 のロジックを FastAPI に載せ替え、永続化 (pickle) と Web UI を追加する。
+検索ロジックそのものは STEP2 から変わらず、入出力の境界 (HTTP・ファイル) が
+変わるだけ、という構造に注目。
+
+UI は同梱の ``static/index.html`` を使う (ハンズオン対象外)。
+
+Example:
+    $ uv run uvicorn hands-on.step3.main:app --reload
+    # ブラウザで http://localhost:8000 を開く
+"""
+
+from __future__ import annotations
+
+import os
+import pickle
+import uuid
+from io import BytesIO
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+from dotenv import load_dotenv
+from fastapi import FastAPI, File, Form, UploadFile
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from google import genai
+from PIL import Image
+
+load_dotenv()
+client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+MODEL = "gemini-embedding-2-preview"
+
+BASE_DIR = Path(__file__).parent
+UPLOAD_DIR = BASE_DIR / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
+DB_PATH = BASE_DIR / "db.pkl"
+
+
+def load_db() -> list[dict[str, Any]]:
+    """ベクトルDBをディスクから読み込む.
+
+    Returns:
+        永続化されたアイテムのリスト。ファイルが存在しなければ空リスト。
+    """
+    if DB_PATH.exists():
+        with open(DB_PATH, "rb") as f:
+            return pickle.load(f)  # noqa: S301
+    return []
+
+
+def save_db() -> None:
+    """現在のベクトルDBをディスクに保存する."""
+    with open(DB_PATH, "wb") as f:
+        pickle.dump(db, f)
+
+
+db: list[dict[str, Any]] = load_db()
+app = FastAPI()
+
+
+def get_embedding(content: str | Image.Image) -> list[float]:
+    """テキストまたは画像を埋め込みベクトルに変換する.
+
+    Args:
+        content: テキスト (``str``) または PIL Image。
+
+    Returns:
+        埋め込みベクトル (デフォルトでは 3072 次元)。
+    """
+    res = client.models.embed_content(model=MODEL, contents=content)
+    return res.embeddings[0].values
+
+
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """2つのベクトル間のコサイン類似度を計算する.
+
+    Args:
+        a: 1つ目のベクトル。
+        b: 2つ目のベクトル。
+
+    Returns:
+        -1.0 から 1.0 の範囲のコサイン類似度。
+    """
+    va, vb = np.array(a), np.array(b)
+    return float(np.dot(va, vb) / (np.linalg.norm(va) * np.linalg.norm(vb)))
+
+
+@app.post("/api/index/text")
+async def index_text(text: str = Form()) -> dict[str, Any]:
+    """テキストをインデックスに登録する.
+
+    Args:
+        text: 登録するテキスト (multipart form フィールド)。
+
+    Returns:
+        ``status`` と登録後の総アイテム数 ``count`` を含む辞書。
+    """
+    vector = get_embedding(text)
+    db.append({"type": "text", "content": text, "vector": vector})
+    save_db()
+    return {"status": "ok", "count": len(db)}
+
+
+@app.post("/api/index/image")
+async def index_image(file: UploadFile = File()) -> dict[str, Any]:
+    """アップロード画像をインデックスに登録する.
+
+    Args:
+        file: アップロードされた画像ファイル。
+
+    Returns:
+        ``status`` と登録後の総アイテム数 ``count`` を含む辞書。
+    """
+    image_bytes = await file.read()
+    image = Image.open(BytesIO(image_bytes))
+    vector = get_embedding(image)
+    ext = Path(file.filename).suffix or ".png"
+    filename = f"{uuid.uuid4().hex}{ext}"
+    save_path = UPLOAD_DIR / filename
+    with open(save_path, "wb") as f:
+        f.write(image_bytes)
+    db.append(
+        {
+            "type": "image",
+            "content": file.filename,
+            "image_url": f"/uploads/{filename}",
+            "vector": vector,
+        }
+    )
+    save_db()
+    return {"status": "ok", "count": len(db)}
+
+
+@app.post("/api/search")
+async def search(
+    query_text: str = Form(default=None),
+    query_image: UploadFile = File(default=None),
+) -> dict[str, Any]:
+    """テキストまたは画像クエリでインデックスを検索する.
+
+    ``query_text`` と ``query_image`` のいずれか一方を指定する。
+
+    Args:
+        query_text: テキストクエリ (任意)。
+        query_image: 画像クエリ (任意)。
+
+    Returns:
+        テキスト結果と画像結果のそれぞれ上位5件を含む辞書、
+        または両方未指定の場合はエラー辞書。
+    """
+    if query_text:
+        query_vector = get_embedding(query_text)
+    elif query_image:
+        image_bytes = await query_image.read()
+        image = Image.open(BytesIO(image_bytes))
+        query_vector = get_embedding(image)
+    else:
+        return {"error": "query_text or query_image is required"}
+
+    text_results = []
+    image_results = []
+    for item in db:
+        score = cosine_similarity(query_vector, item["vector"])
+        result = {"type": item["type"], "content": item["content"], "score": score}
+        if item.get("image_url"):
+            result["image_url"] = item["image_url"]
+        if item["type"] == "image":
+            image_results.append(result)
+        else:
+            text_results.append(result)
+
+    text_results.sort(key=lambda x: x["score"], reverse=True)
+    image_results.sort(key=lambda x: x["score"], reverse=True)
+    return {
+        "text_results": text_results[:5],
+        "image_results": image_results[:5],
+    }
+
+
+@app.get("/api/stats")
+async def stats() -> dict[str, int]:
+    """インデックスの統計情報を返す.
+
+    Returns:
+        テキスト数・画像数・合計数を含む辞書。
+    """
+    text_count = sum(1 for item in db if item["type"] == "text")
+    image_count = sum(1 for item in db if item["type"] == "image")
+    return {"text_count": text_count, "image_count": image_count, "total": len(db)}
+
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+
+
+@app.get("/")
+async def root() -> FileResponse:
+    """ルート (``/``) で同梱の UI HTML を返す.
+
+    Returns:
+        ``static/index.html`` の ``FileResponse``。
+    """
+    return FileResponse(BASE_DIR / "static" / "index.html")
