@@ -1,8 +1,18 @@
+"""Cross-modal search demo backend.
+
+Gemini Embedding 2 (``gemini-embedding-2-preview``) を使って、テキスト・画像・
+両方を組み合わせたクエリで検索できる小さな FastAPI アプリ。インデックスは
+プロセス内の ``list[dict]``、永続化は ``db.pkl`` (pickle)。
+"""
+
+from __future__ import annotations
+
 import os
 import pickle
 import uuid
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from dotenv import load_dotenv
@@ -25,30 +35,55 @@ DB_PATH = Path("db.pkl")
 app = FastAPI()
 
 
-def load_db() -> list[dict]:
+def load_db() -> list[dict[str, Any]]:
+    """ベクトルDBをディスクから読み込む.
+
+    Returns:
+        永続化されたアイテムのリスト。``db.pkl`` が無ければ空リスト。
+    """
     if DB_PATH.exists():
         with open(DB_PATH, "rb") as f:
             return pickle.load(f)  # noqa: S301
     return []
 
 
-def save_db():
+def save_db() -> None:
+    """現在のベクトルDBを ``db.pkl`` に書き出す."""
     with open(DB_PATH, "wb") as f:
         pickle.dump(db, f)
 
 
-# In-memory vector DB (loaded from disk)
-db: list[dict] = load_db()
+db: list[dict[str, Any]] = load_db()
 
 EMBEDDING_MODEL = "gemini-embedding-2-preview"
 
 
-def get_embedding(contents):
+def get_embedding(contents: str | Image.Image) -> list[float]:
+    """テキストまたは画像を埋め込みベクトルに変換する.
+
+    Args:
+        contents: テキスト (``str``) または PIL Image。
+
+    Returns:
+        埋め込みベクトル (デフォルトでは 3072 次元)。
+    """
     response = client.models.embed_content(model=EMBEDDING_MODEL, contents=contents)
     return response.embeddings[0].values
 
 
-def get_multimodal_embedding(text, image):
+def get_multimodal_embedding(text: str, image: Image.Image) -> list[float]:
+    """テキストと画像を1つのマルチモーダル入力として埋め込む.
+
+    ``types.Content`` に複数の ``Part`` をまとめて渡すことで、テキストと画像
+    両方の情報を反映した単一の埋め込みベクトルが得られる。
+
+    Args:
+        text: クエリの一部としてのテキスト。
+        image: クエリの一部としての画像。
+
+    Returns:
+        テキスト + 画像の組み合わせを表現する単一の埋め込みベクトル。
+    """
     buf = BytesIO()
     image.save(buf, format="PNG")
     content = types.Content(
@@ -61,14 +96,30 @@ def get_multimodal_embedding(text, image):
     return response.embeddings[0].values
 
 
-def cosine_similarity(a, b):
-    a = np.array(a)
-    b = np.array(b)
-    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """2つのベクトル間のコサイン類似度を計算する.
+
+    Args:
+        a: 1つ目のベクトル。
+        b: 2つ目のベクトル。
+
+    Returns:
+        -1.0 から 1.0 の範囲のコサイン類似度。
+    """
+    va, vb = np.array(a), np.array(b)
+    return float(np.dot(va, vb) / (np.linalg.norm(va) * np.linalg.norm(vb)))
 
 
 @app.post("/api/index/text")
-async def index_text(text: str = Form()):
+async def index_text(text: str = Form()) -> dict[str, Any]:
+    """テキストをインデックスに登録する.
+
+    Args:
+        text: 登録するテキスト (multipart form フィールド)。
+
+    Returns:
+        ``status`` と登録後の総アイテム数 ``count`` を含む辞書。
+    """
     vector = get_embedding(text)
     db.append({"type": "text", "content": text, "vector": vector})
     save_db()
@@ -76,22 +127,34 @@ async def index_text(text: str = Form()):
 
 
 @app.post("/api/index/image")
-async def index_image(file: UploadFile = File()):
+async def index_image(file: UploadFile = File()) -> dict[str, Any]:
+    """アップロード画像をインデックスに登録する.
+
+    画像本体は ``uploads/<uuid>.<ext>`` に保存し、検索結果から参照できるように
+    ``image_url`` フィールドに公開パスを記録する。
+
+    Args:
+        file: アップロードされた画像ファイル。
+
+    Returns:
+        ``status`` と登録後の総アイテム数 ``count`` を含む辞書。
+    """
     image_bytes = await file.read()
     image = Image.open(BytesIO(image_bytes))
     vector = get_embedding(image)
-    # Save image to uploads/
     ext = Path(file.filename).suffix or ".png"
     filename = f"{uuid.uuid4().hex}{ext}"
     save_path = UPLOAD_DIR / filename
     with open(save_path, "wb") as f:
         f.write(image_bytes)
-    db.append({
-        "type": "image",
-        "content": file.filename,
-        "image_url": f"/uploads/{filename}",
-        "vector": vector,
-    })
+    db.append(
+        {
+            "type": "image",
+            "content": file.filename,
+            "image_url": f"/uploads/{filename}",
+            "vector": vector,
+        }
+    )
     save_db()
     return {"status": "ok", "count": len(db)}
 
@@ -100,7 +163,20 @@ async def index_image(file: UploadFile = File()):
 async def search(
     query_text: str = Form(default=None),
     query_image: UploadFile = File(default=None),
-):
+) -> dict[str, Any]:
+    """テキスト・画像・両方のいずれかでインデックスを検索する.
+
+    - 両方指定: ``text + image`` を1つのマルチモーダルクエリにまとめる。
+    - 片方のみ: クロスモーダル検索 (テキスト or 画像)。
+
+    Args:
+        query_text: テキストクエリ (任意)。
+        query_image: 画像クエリ (任意)。
+
+    Returns:
+        テキスト結果と画像結果のそれぞれ上位5件を含む辞書、
+        または両方未指定の場合はエラー辞書。
+    """
     if query_text and query_image:
         image_bytes = await query_image.read()
         image = Image.open(BytesIO(image_bytes))
@@ -135,7 +211,12 @@ async def search(
 
 
 @app.get("/api/stats")
-async def stats():
+async def stats() -> dict[str, int]:
+    """インデックスの統計情報を返す.
+
+    Returns:
+        テキスト数・画像数・合計数を含む辞書。
+    """
     text_count = sum(1 for item in db if item["type"] == "text")
     image_count = sum(1 for item in db if item["type"] == "image")
     return {"text_count": text_count, "image_count": image_count, "total": len(db)}
@@ -146,5 +227,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/")
-async def root():
+async def root() -> FileResponse:
+    """ルート (``/``) で同梱の UI HTML を返す.
+
+    Returns:
+        ``static/index.html`` の ``FileResponse``。
+    """
     return FileResponse("static/index.html")

@@ -55,10 +55,3 @@ extend-immutable-calls = [
     "fastapi.Cookie",
 ]
 
-[tool.ruff.lint.per-file-ignores]
-"main.py" = ["D"]
-"seed.py" = ["D"]
-
-[tool.ruff.format]
-# 次の「Google style 統一」コミットで除外を外して整形する
-exclude = ["main.py", "seed.py"]

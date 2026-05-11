@@ -1,4 +1,14 @@
-"""Seed script: register ~50 demo items via API."""
+"""デモデータ投入スクリプト.
+
+サーバー (``main.py``) が起動している前提で、テキスト約30件と画像約20件を
+API 経由で登録する。画像は Pillow で生成したグラデーション画像を使う。
+
+Example:
+    $ uv run uvicorn main:app --reload  # 別ターミナルで先に起動
+    $ uv run python seed.py
+"""
+
+from __future__ import annotations
 
 import io
 import sys
@@ -66,7 +76,16 @@ IMAGES = [
 
 
 def generate_image(color1: str, color2: str, label: str) -> bytes:
-    """Generate a simple gradient image with a label."""
+    """ラベル文字を中央に重ねた縦方向グラデーション画像を生成する.
+
+    Args:
+        color1: 上端の色 (CSSカラー文字列、例: ``"#FF6B35"``)。
+        color2: 下端の色 (CSSカラー文字列)。
+        label: 画像中央に描画する英字ラベル。
+
+    Returns:
+        PNG エンコード済みのバイト列。
+    """
     w, h = 256, 256
     img = Image.new("RGB", (w, h))
     draw = ImageDraw.Draw(img)
@@ -95,7 +114,11 @@ def generate_image(color1: str, color2: str, label: str) -> bytes:
     return buf.getvalue()
 
 
-def main():
+def main() -> None:
+    """``TEXTS`` と ``IMAGES`` を順番に API へ投入する.
+
+    サーバーが起動していなければ案内メッセージを出して終了する。
+    """
     client = httpx.Client(base_url=BASE_URL, timeout=60)
 
     # Check server is running
