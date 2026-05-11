@@ -16,9 +16,9 @@ import sys
 import httpx
 from PIL import Image, ImageDraw, ImageFont
 
-BASE_URL = "http://localhost:8000"
+_BASE_URL = "http://localhost:8000"
 
-TEXTS = [
+_TEXTS = [
     "東京タワーは1958年に完成した電波塔で、高さは333メートルです",
     "富士山は日本最高峰の山で、標高3776メートルです",
     "桜は日本の春を象徴する花で、3月から4月にかけて咲きます",
@@ -51,7 +51,7 @@ TEXTS = [
     "モーツァルトは古典派音楽を代表するオーストリアの作曲家です",
 ]
 
-IMAGES = [
+_IMAGES = [
     ("sunset", "#FF6B35", "#FFC300", "Sunset"),
     ("ocean", "#006994", "#40E0D0", "Ocean"),
     ("forest", "#228B22", "#90EE90", "Forest"),
@@ -115,32 +115,32 @@ def generate_image(color1: str, color2: str, label: str) -> bytes:
 
 
 def main() -> None:
-    """``TEXTS`` と ``IMAGES`` を順番に API へ投入する.
+    """``_TEXTS`` と ``_IMAGES`` を順番に API へ投入する.
 
     サーバーが起動していなければ案内メッセージを出して終了する。
     """
-    client = httpx.Client(base_url=BASE_URL, timeout=60)
+    client = httpx.Client(base_url=_BASE_URL, timeout=60)
 
     # Check server is running
     try:
         client.get("/")
     except httpx.ConnectError:
-        print(f"Error: Server is not running at {BASE_URL}")
+        print(f"Error: Server is not running at {_BASE_URL}")
         print("Start it first: uv run uvicorn main:app --reload")
         sys.exit(1)
 
-    total = len(TEXTS) + len(IMAGES)
+    total = len(_TEXTS) + len(_IMAGES)
     count = 0
 
     print(f"Registering {total} demo items...")
 
-    for text in TEXTS:
+    for text in _TEXTS:
         count += 1
         print(f"  [{count}/{total}] text: {text[:40]}...")
         res = client.post("/api/index/text", data={"text": text})
         res.raise_for_status()
 
-    for name, c1, c2, label in IMAGES:
+    for name, c1, c2, label in _IMAGES:
         count += 1
         print(f"  [{count}/{total}] image: {label}")
         img_bytes = generate_image(c1, c2, label)

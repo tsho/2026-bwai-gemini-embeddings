@@ -25,12 +25,12 @@ from PIL import Image
 
 load_dotenv()
 
-client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
+_UPLOAD_DIR = Path("uploads")
+_UPLOAD_DIR.mkdir(exist_ok=True)
 
-DB_PATH = Path("db.pkl")
+_DB_PATH = Path("db.pkl")
 
 app = FastAPI()
 
@@ -41,21 +41,21 @@ def load_db() -> list[dict[str, Any]]:
     Returns:
         永続化されたアイテムのリスト。``db.pkl`` が無ければ空リスト。
     """
-    if DB_PATH.exists():
-        with open(DB_PATH, "rb") as f:
+    if _DB_PATH.exists():
+        with open(_DB_PATH, "rb") as f:
             return pickle.load(f)  # noqa: S301
     return []
 
 
 def save_db() -> None:
     """現在のベクトルDBを ``db.pkl`` に書き出す."""
-    with open(DB_PATH, "wb") as f:
-        pickle.dump(db, f)
+    with open(_DB_PATH, "wb") as f:
+        pickle.dump(_db, f)
 
 
-db: list[dict[str, Any]] = load_db()
+_db: list[dict[str, Any]] = load_db()
 
-EMBEDDING_MODEL = "gemini-embedding-2-preview"
+_EMBEDDING_MODEL = "gemini-embedding-2-preview"
 
 
 def get_embedding(contents: str | Image.Image) -> list[float]:
@@ -67,7 +67,7 @@ def get_embedding(contents: str | Image.Image) -> list[float]:
     Returns:
         埋め込みベクトル (デフォルトでは 3072 次元)。
     """
-    response = client.models.embed_content(model=EMBEDDING_MODEL, contents=contents)
+    response = _client.models.embed_content(model=_EMBEDDING_MODEL, contents=contents)
     return response.embeddings[0].values
 
 
@@ -92,7 +92,7 @@ def get_multimodal_embedding(text: str, image: Image.Image) -> list[float]:
             types.Part.from_bytes(data=buf.getvalue(), mime_type="image/png"),
         ]
     )
-    response = client.models.embed_content(model=EMBEDDING_MODEL, contents=content)
+    response = _client.models.embed_content(model=_EMBEDDING_MODEL, contents=content)
     return response.embeddings[0].values
 
 
@@ -121,9 +121,9 @@ async def index_text(text: str = Form()) -> dict[str, Any]:
         ``status`` と登録後の総アイテム数 ``count`` を含む辞書。
     """
     vector = get_embedding(text)
-    db.append({"type": "text", "content": text, "vector": vector})
+    _db.append({"type": "text", "content": text, "vector": vector})
     save_db()
-    return {"status": "ok", "count": len(db)}
+    return {"status": "ok", "count": len(_db)}
 
 
 @app.post("/api/index/image")
@@ -144,10 +144,10 @@ async def index_image(file: UploadFile = File()) -> dict[str, Any]:
     vector = get_embedding(image)
     ext = Path(file.filename).suffix or ".png"
     filename = f"{uuid.uuid4().hex}{ext}"
-    save_path = UPLOAD_DIR / filename
+    save_path = _UPLOAD_DIR / filename
     with open(save_path, "wb") as f:
         f.write(image_bytes)
-    db.append(
+    _db.append(
         {
             "type": "image",
             "content": file.filename,
@@ -156,7 +156,7 @@ async def index_image(file: UploadFile = File()) -> dict[str, Any]:
         }
     )
     save_db()
-    return {"status": "ok", "count": len(db)}
+    return {"status": "ok", "count": len(_db)}
 
 
 @app.post("/api/search")
@@ -192,7 +192,7 @@ async def search(
 
     text_results = []
     image_results = []
-    for item in db:
+    for item in _db:
         score = cosine_similarity(query_vector, item["vector"])
         result = {"type": item["type"], "content": item["content"], "score": score}
         if item.get("image_url"):
@@ -217,9 +217,9 @@ async def stats() -> dict[str, int]:
     Returns:
         テキスト数・画像数・合計数を含む辞書。
     """
-    text_count = sum(1 for item in db if item["type"] == "text")
-    image_count = sum(1 for item in db if item["type"] == "image")
-    return {"text_count": text_count, "image_count": image_count, "total": len(db)}
+    text_count = sum(1 for item in _db if item["type"] == "text")
+    image_count = sum(1 for item in _db if item["type"] == "image")
+    return {"text_count": text_count, "image_count": image_count, "total": len(_db)}
 
 
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

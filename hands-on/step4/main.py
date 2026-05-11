@@ -24,10 +24,10 @@ from google import genai
 from google.genai import types
 
 load_dotenv()
-client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-MODEL = "gemini-embedding-2-preview"
+_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+_MODEL = "gemini-embedding-2-preview"
 
-DOCS = [
+_DOCS = [
     "東京タワーは1958年に完成した電波塔で、高さは333メートルです",
     "富士山は日本最高峰の山で、標高3776メートルです",
     "桜は日本の春を象徴する花で、3月から4月にかけて咲きます",
@@ -40,7 +40,7 @@ DOCS = [
     "A cup of hot coffee with latte art on a wooden table",
 ]
 
-QUERY = "日本の歴史的な観光地"
+_QUERY = "日本の歴史的な観光地"
 
 
 def embed(content: str, config: types.EmbedContentConfig | None = None) -> list[float]:
@@ -54,7 +54,7 @@ def embed(content: str, config: types.EmbedContentConfig | None = None) -> list[
         埋め込みベクトル。``config.output_dimensionality`` が指定されていれば
         その次元数、未指定ならデフォルトの 3072 次元。
     """
-    res = client.models.embed_content(model=MODEL, contents=content, config=config)
+    res = _client.models.embed_content(model=_MODEL, contents=content, config=config)
     return res.embeddings[0].values
 
 
@@ -108,10 +108,10 @@ def run_experiment(
         query_config: クエリ側に渡す埋め込み設定。
     """
     print(f"=== {name} ===")
-    db = [{"content": text, "vector": embed(text, doc_config)} for text in DOCS]
-    qv = embed(QUERY, query_config)
+    db = [{"content": text, "vector": embed(text, doc_config)} for text in _DOCS]
+    qv = embed(_QUERY, query_config)
     print(f"  vector dim: {len(qv)}")
-    print(f"  query: {QUERY}")
+    print(f"  query: {_QUERY}")
     for score, item in search(qv, db):
         print(f"    {score:.4f}  {item['content']}")
     print()

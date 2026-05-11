@@ -16,10 +16,10 @@ from dotenv import load_dotenv
 from google import genai
 
 load_dotenv()
-client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-MODEL = "gemini-embedding-2-preview"
+_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+_MODEL = "gemini-embedding-2-preview"
 
-DOCS = [
+_DOCS = [
     "東京タワーは1958年に完成した電波塔で、高さは333メートルです",
     "富士山は日本最高峰の山で、標高3776メートルです",
     "桜は日本の春を象徴する花で、3月から4月にかけて咲きます",
@@ -42,7 +42,7 @@ def get_embedding(content: str) -> list[float]:
     Returns:
         埋め込みベクトル (Gemini Embedding 2 のデフォルトでは 3072 次元)。
     """
-    res = client.models.embed_content(model=MODEL, contents=content)
+    res = _client.models.embed_content(model=_MODEL, contents=content)
     return res.embeddings[0].values
 
 
@@ -63,7 +63,7 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 def main() -> None:
     """インデックスを構築し、2つのクエリで上位3件を表示する."""
     print("Building index...")
-    db = [{"content": text, "vector": get_embedding(text)} for text in DOCS]
+    db = [{"content": text, "vector": get_embedding(text)} for text in _DOCS]
     print(f"Indexed {len(db)} documents.\n")
 
     queries = ["日本の歴史的な建造物", "warm drink in a cafe"]

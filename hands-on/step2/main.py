@@ -23,10 +23,10 @@ from google.genai import types
 from PIL import Image, ImageDraw
 
 load_dotenv()
-client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-MODEL = "gemini-embedding-2-preview"
+_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+_MODEL = "gemini-embedding-2-preview"
 
-TEXTS = [
+_TEXTS = [
     "東京タワーは1958年に完成した電波塔で、高さは333メートルです",
     "富士山は日本最高峰の山で、標高3776メートルです",
     "桜は日本の春を象徴する花で、3月から4月にかけて咲きます",
@@ -37,7 +37,7 @@ TEXTS = [
     "A campfire under a starry night sky in the forest",
 ]
 
-IMAGES = [
+_IMAGES = [
     ("sunset", "#FF6B35", "#FFC300"),
     ("ocean", "#006994", "#40E0D0"),
     ("forest", "#228B22", "#90EE90"),
@@ -83,7 +83,7 @@ def get_embedding(content: str | Image.Image) -> list[float]:
     Returns:
         埋め込みベクトル (デフォルトでは 3072 次元)。
     """
-    res = client.models.embed_content(model=MODEL, contents=content)
+    res = _client.models.embed_content(model=_MODEL, contents=content)
     return res.embeddings[0].values
 
 
@@ -109,7 +109,7 @@ def get_multimodal_embedding(text: str, image: Image.Image) -> list[float]:
             types.Part.from_bytes(data=buf.getvalue(), mime_type="image/png"),
         ]
     )
-    res = client.models.embed_content(model=MODEL, contents=content)
+    res = _client.models.embed_content(model=_MODEL, contents=content)
     return res.embeddings[0].values
 
 
@@ -155,9 +155,9 @@ def main() -> None:
     """テキスト + 画像インデックスを構築し、クロスモーダル検索を実演する."""
     print("Building index (text + image)...")
     db: list[dict[str, Any]] = []
-    for text in TEXTS:
+    for text in _TEXTS:
         db.append({"type": "text", "content": text, "vector": get_embedding(text)})
-    for name, c1, c2 in IMAGES:
+    for name, c1, c2 in _IMAGES:
         img = make_gradient(c1, c2)
         db.append({"type": "image", "content": name, "vector": get_embedding(img)})
     n_text = sum(1 for x in db if x["type"] == "text")
