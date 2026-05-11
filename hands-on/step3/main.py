@@ -26,6 +26,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from google import genai
+from google.genai import types
 from PIL import Image
 
 load_dotenv()
@@ -69,6 +70,31 @@ def get_embedding(content: str | Image.Image) -> list[float]:
     Returns:
         埋め込みベクトル (デフォルトでは 3072 次元)。
     """
+    res = client.models.embed_content(model=MODEL, contents=content)
+    return res.embeddings[0].values
+
+
+def get_multimodal_embedding(text: str, image: Image.Image) -> list[float]:
+    """テキストと画像を1つのマルチモーダル入力として埋め込む.
+
+    ``types.Content`` に複数の ``Part`` をまとめて渡すことで、テキストと画像の
+    両方を反映した単一の埋め込みベクトルが得られる。
+
+    Args:
+        text: クエリの一部としてのテキスト。
+        image: クエリの一部としての画像。
+
+    Returns:
+        テキスト + 画像の組み合わせを表現する単一の埋め込みベクトル。
+    """
+    buf = BytesIO()
+    image.save(buf, format="PNG")
+    content = types.Content(
+        parts=[
+            types.Part.from_text(text=text),
+            types.Part.from_bytes(data=buf.getvalue(), mime_type="image/png"),
+        ]
+    )
     res = client.models.embed_content(model=MODEL, contents=content)
     return res.embeddings[0].values
 
@@ -138,9 +164,10 @@ async def search(
     query_text: str = Form(default=None),
     query_image: UploadFile = File(default=None),
 ) -> dict[str, Any]:
-    """テキストまたは画像クエリでインデックスを検索する.
+    """テキスト・画像・両方のいずれかでインデックスを検索する.
 
-    ``query_text`` と ``query_image`` のいずれか一方を指定する。
+    - 両方指定: text + image を1つのマルチモーダルクエリにまとめる。
+    - 片方のみ: クロスモーダル検索 (テキスト or 画像)。
 
     Args:
         query_text: テキストクエリ (任意)。
@@ -150,7 +177,11 @@ async def search(
         テキスト結果と画像結果のそれぞれ上位5件を含む辞書、
         または両方未指定の場合はエラー辞書。
     """
-    if query_text:
+    if query_text and query_image:
+        image_bytes = await query_image.read()
+        image = Image.open(BytesIO(image_bytes))
+        query_vector = get_multimodal_embedding(query_text, image)
+    elif query_text:
         query_vector = get_embedding(query_text)
     elif query_image:
         image_bytes = await query_image.read()

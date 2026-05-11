@@ -10,6 +10,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from google import genai
+from google.genai import types
 from PIL import Image
 
 load_dotenv()
@@ -44,6 +45,19 @@ EMBEDDING_MODEL = "gemini-embedding-2-preview"
 
 def get_embedding(contents):
     response = client.models.embed_content(model=EMBEDDING_MODEL, contents=contents)
+    return response.embeddings[0].values
+
+
+def get_multimodal_embedding(text, image):
+    buf = BytesIO()
+    image.save(buf, format="PNG")
+    content = types.Content(
+        parts=[
+            types.Part.from_text(text=text),
+            types.Part.from_bytes(data=buf.getvalue(), mime_type="image/png"),
+        ]
+    )
+    response = client.models.embed_content(model=EMBEDDING_MODEL, contents=content)
     return response.embeddings[0].values
 
 
@@ -87,7 +101,11 @@ async def search(
     query_text: str = Form(default=None),
     query_image: UploadFile = File(default=None),
 ):
-    if query_text:
+    if query_text and query_image:
+        image_bytes = await query_image.read()
+        image = Image.open(BytesIO(image_bytes))
+        query_vector = get_multimodal_embedding(query_text, image)
+    elif query_text:
         query_vector = get_embedding(query_text)
     elif query_image:
         image_bytes = await query_image.read()

@@ -190,14 +190,14 @@ async function fetchStats() {
 }
 fetchStats();
 
-// Search by image: show preview on file select and trigger search
+// Image select: only show preview. Search runs when the user presses the search button
+// (so text + image can be sent together as a multimodal query).
 searchImageEl.addEventListener("change", () => {
   const file = searchImageEl.files[0];
   if (!file) return;
   selectedSearchFile = file;
   imageFileName.textContent = file.name;
   imagePreview.style.display = "block";
-  searchByImage(file);
 });
 
 function clearSearchImage() {
@@ -216,10 +216,30 @@ searchTextEl.addEventListener("keydown", (e) => {
 
 function doSearch() {
   const text = searchTextEl.value.trim();
-  if (selectedSearchFile) {
+  if (text && selectedSearchFile) {
+    searchMultimodal(text, selectedSearchFile);
+  } else if (selectedSearchFile) {
     searchByImage(selectedSearchFile);
   } else if (text) {
     searchByText(text);
+  }
+}
+
+async function searchMultimodal(text, file) {
+  searchStatus.textContent = "Searching...";
+  searchBtn.disabled = true;
+  try {
+    const form = new FormData();
+    form.append("query_text", text);
+    form.append("query_image", file);
+    const res = await fetch("/api/search", { method: "POST", body: form });
+    const data = await res.json();
+    renderResults(data);
+    searchStatus.textContent = "";
+  } catch (e) {
+    searchStatus.textContent = "Error: " + e.message;
+  } finally {
+    searchBtn.disabled = false;
   }
 }
 
