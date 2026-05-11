@@ -1,8 +1,14 @@
-"""Cross-modal search demo backend.
+"""STEP 3: Web API + UI 化.
 
-Gemini Embedding 2 (``gemini-embedding-2-preview``) を使って、テキスト・画像・
-両方を組み合わせたクエリで検索できる小さな FastAPI アプリ。インデックスは
-プロセス内の ``list[dict]``、永続化は ``db.pkl`` (pickle)。
+STEP2 のロジックを FastAPI に載せ替え、永続化 (pickle) と Web UI を追加する。
+検索ロジックそのものは STEP2 から変わらず、入出力の境界 (HTTP・ファイル) が
+変わるだけ、という構造に注目。
+
+UI は同梱の ``static/index.html`` を使う (ハンズオン対象外)。
+
+Example:
+    $ uv run uvicorn hands-on.step3.main:app --reload
+    # ブラウザで http://localhost:8000 を開く
 """
 
 from __future__ import annotations
@@ -24,22 +30,20 @@ from google.genai import types
 from PIL import Image
 
 load_dotenv()
-
 _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+_MODEL = "gemini-embedding-2-preview"
 
-_UPLOAD_DIR = Path("uploads")
+_BASE_DIR = Path(__file__).parent
+_UPLOAD_DIR = _BASE_DIR / "uploads"
 _UPLOAD_DIR.mkdir(exist_ok=True)
-
-_DB_PATH = Path("db.pkl")
-
-app = FastAPI()
+_DB_PATH = _BASE_DIR / "db.pkl"
 
 
 def load_db() -> list[dict[str, Any]]:
     """ベクトルDBをディスクから読み込む.
 
     Returns:
-        永続化されたアイテムのリスト。``db.pkl`` が無ければ空リスト。
+        永続化されたアイテムのリスト。ファイルが存在しなければ空リスト。
     """
     if _DB_PATH.exists():
         with open(_DB_PATH, "rb") as f:
@@ -48,34 +52,33 @@ def load_db() -> list[dict[str, Any]]:
 
 
 def save_db() -> None:
-    """現在のベクトルDBを ``db.pkl`` に書き出す."""
+    """現在のベクトルDBをディスクに保存する."""
     with open(_DB_PATH, "wb") as f:
         pickle.dump(_db, f)
 
 
 _db: list[dict[str, Any]] = load_db()
+app = FastAPI()
 
-_EMBEDDING_MODEL = "gemini-embedding-2-preview"
 
-
-def get_embedding(contents: str | Image.Image) -> list[float]:
+def get_embedding(content: str | Image.Image) -> list[float]:
     """テキストまたは画像を埋め込みベクトルに変換する.
 
     Args:
-        contents: テキスト (``str``) または PIL Image。
+        content: テキスト (``str``) または PIL Image。
 
     Returns:
         埋め込みベクトル (デフォルトでは 3072 次元)。
     """
-    response = _client.models.embed_content(model=_EMBEDDING_MODEL, contents=contents)
-    return response.embeddings[0].values
+    res = _client.models.embed_content(model=_MODEL, contents=content)
+    return res.embeddings[0].values
 
 
 def get_multimodal_embedding(text: str, image: Image.Image) -> list[float]:
     """テキストと画像を1つのマルチモーダル入力として埋め込む.
 
-    ``types.Content`` に複数の ``Part`` をまとめて渡すことで、テキストと画像
-    両方の情報を反映した単一の埋め込みベクトルが得られる。
+    ``types.Content`` に複数の ``Part`` をまとめて渡すことで、テキストと画像の
+    両方を反映した単一の埋め込みベクトルが得られる。
 
     Args:
         text: クエリの一部としてのテキスト。
@@ -92,8 +95,8 @@ def get_multimodal_embedding(text: str, image: Image.Image) -> list[float]:
             types.Part.from_bytes(data=buf.getvalue(), mime_type="image/png"),
         ]
     )
-    response = _client.models.embed_content(model=_EMBEDDING_MODEL, contents=content)
-    return response.embeddings[0].values
+    res = _client.models.embed_content(model=_MODEL, contents=content)
+    return res.embeddings[0].values
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -130,9 +133,6 @@ async def index_text(text: str = Form()) -> dict[str, Any]:
 async def index_image(file: UploadFile = File()) -> dict[str, Any]:
     """アップロード画像をインデックスに登録する.
 
-    画像本体は ``uploads/<uuid>.<ext>`` に保存し、検索結果から参照できるように
-    ``image_url`` フィールドに公開パスを記録する。
-
     Args:
         file: アップロードされた画像ファイル。
 
@@ -166,7 +166,7 @@ async def search(
 ) -> dict[str, Any]:
     """テキスト・画像・両方のいずれかでインデックスを検索する.
 
-    - 両方指定: ``text + image`` を1つのマルチモーダルクエリにまとめる。
+    - 両方指定: text + image を1つのマルチモーダルクエリにまとめる。
     - 片方のみ: クロスモーダル検索 (テキスト or 画像)。
 
     Args:
@@ -222,8 +222,8 @@ async def stats() -> dict[str, int]:
     return {"text_count": text_count, "image_count": image_count, "total": len(_db)}
 
 
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/uploads", StaticFiles(directory=_UPLOAD_DIR), name="uploads")
+app.mount("/static", StaticFiles(directory=_BASE_DIR / "static"), name="static")
 
 
 @app.get("/")
@@ -233,4 +233,4 @@ async def root() -> FileResponse:
     Returns:
         ``static/index.html`` の ``FileResponse``。
     """
-    return FileResponse("static/index.html")
+    return FileResponse(_BASE_DIR / "static" / "index.html")

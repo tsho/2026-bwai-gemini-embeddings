@@ -1,4 +1,14 @@
-"""Seed script: register ~50 demo items via API."""
+"""デモデータ投入スクリプト.
+
+サーバー (``main.py``) が起動している前提で、テキスト約30件と画像約20件を
+API 経由で登録する。画像は Pillow で生成したグラデーション画像を使う。
+
+Example:
+    $ uv run uvicorn main:app --reload  # 別ターミナルで先に起動
+    $ uv run python seed.py
+"""
+
+from __future__ import annotations
 
 import io
 import sys
@@ -6,9 +16,9 @@ import sys
 import httpx
 from PIL import Image, ImageDraw, ImageFont
 
-BASE_URL = "http://localhost:8000"
+_BASE_URL = "http://localhost:8000"
 
-TEXTS = [
+_TEXTS = [
     "東京タワーは1958年に完成した電波塔で、高さは333メートルです",
     "富士山は日本最高峰の山で、標高3776メートルです",
     "桜は日本の春を象徴する花で、3月から4月にかけて咲きます",
@@ -41,7 +51,7 @@ TEXTS = [
     "モーツァルトは古典派音楽を代表するオーストリアの作曲家です",
 ]
 
-IMAGES = [
+_IMAGES = [
     ("sunset", "#FF6B35", "#FFC300", "Sunset"),
     ("ocean", "#006994", "#40E0D0", "Ocean"),
     ("forest", "#228B22", "#90EE90", "Forest"),
@@ -66,7 +76,16 @@ IMAGES = [
 
 
 def generate_image(color1: str, color2: str, label: str) -> bytes:
-    """Generate a simple gradient image with a label."""
+    """ラベル文字を中央に重ねた縦方向グラデーション画像を生成する.
+
+    Args:
+        color1: 上端の色 (CSSカラー文字列、例: ``"#FF6B35"``)。
+        color2: 下端の色 (CSSカラー文字列)。
+        label: 画像中央に描画する英字ラベル。
+
+    Returns:
+        PNG エンコード済みのバイト列。
+    """
     w, h = 256, 256
     img = Image.new("RGB", (w, h))
     draw = ImageDraw.Draw(img)
@@ -95,29 +114,33 @@ def generate_image(color1: str, color2: str, label: str) -> bytes:
     return buf.getvalue()
 
 
-def main():
-    client = httpx.Client(base_url=BASE_URL, timeout=60)
+def main() -> None:
+    """``_TEXTS`` と ``_IMAGES`` を順番に API へ投入する.
+
+    サーバーが起動していなければ案内メッセージを出して終了する。
+    """
+    client = httpx.Client(base_url=_BASE_URL, timeout=60)
 
     # Check server is running
     try:
         client.get("/")
     except httpx.ConnectError:
-        print(f"Error: Server is not running at {BASE_URL}")
+        print(f"Error: Server is not running at {_BASE_URL}")
         print("Start it first: uv run uvicorn main:app --reload")
         sys.exit(1)
 
-    total = len(TEXTS) + len(IMAGES)
+    total = len(_TEXTS) + len(_IMAGES)
     count = 0
 
     print(f"Registering {total} demo items...")
 
-    for text in TEXTS:
+    for text in _TEXTS:
         count += 1
         print(f"  [{count}/{total}] text: {text[:40]}...")
         res = client.post("/api/index/text", data={"text": text})
         res.raise_for_status()
 
-    for name, c1, c2, label in IMAGES:
+    for name, c1, c2, label in _IMAGES:
         count += 1
         print(f"  [{count}/{total}] image: {label}")
         img_bytes = generate_image(c1, c2, label)
