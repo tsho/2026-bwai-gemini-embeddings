@@ -97,7 +97,7 @@ vector = get_embedding(img)  # ← STEP1の関数そのまま
 db.append({"type": "image", "content": "sunset.png", "vector": vector})
 ```
 
-### 試してみたい4パターン
+### 試してみたい5パターン
 
 | クエリ | 検索対象 | 期待される挙動 |
 |---|---|---|
@@ -105,6 +105,24 @@ db.append({"type": "image", "content": "sunset.png", "vector": vector})
 | テキスト | 画像 | "sunset" で夕焼け画像がヒット |
 | 画像 | 画像 | 似た色合い・構図の画像がヒット |
 | 画像 | テキスト | 海の画像で "tropical beach" がヒット |
+| **テキスト + 画像（マルチモーダル）** | 両方 | "日本" + ピンクのグラデーション画像 で 桜・富士山などがヒット |
+
+### マルチモーダルクエリの組み立て方
+
+クロスモーダル（どちらか一方）と区別して、**テキストと画像を1つのクエリ**として渡すには `types.Content` に複数の `Part` を入れます。
+
+```python
+from google.genai import types
+
+content = types.Content(parts=[
+    types.Part.from_text(text="日本"),
+    types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
+])
+res = client.models.embed_content(model=MODEL, contents=content)
+vector = res.embeddings[0].values  # ← テキスト+画像を反映した単一ベクトル
+```
+
+`list[Part]` をそのまま渡すとバッチ扱い（各 Part ごとに別々の埋め込み）になります。1つの埋め込みにまとめたいときは **必ず `Content` でラップ** するのがポイント。
 
 ### このSTEPで体感したいこと
 

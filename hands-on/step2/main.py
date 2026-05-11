@@ -2,7 +2,9 @@
 
 STEP1 の ``get_embedding()`` に PIL Image を渡すだけで画像もベクトル化できる、
 というのが核心。テキストと画像が同じ 3072 次元空間に乗るため、
-クロスモーダル検索 (テキスト -> 画像、画像 -> テキスト) が可能になる。
+クロスモーダル検索 (テキスト -> 画像、画像 -> テキスト) と、
+**マルチモーダル検索** (テキスト + 画像を1つのクエリとして扱う) の
+両方が可能になる。
 
 Example:
     $ uv run python hands-on/step2/main.py
@@ -10,12 +12,14 @@ Example:
 
 from __future__ import annotations
 
+import io
 import os
 from typing import Any
 
 import numpy as np
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 from PIL import Image, ImageDraw
 
 load_dotenv()
@@ -79,6 +83,32 @@ def get_embedding(content: str | Image.Image) -> list[float]:
     Returns:
         埋め込みベクトル (デフォルトでは 3072 次元)。
     """
+    res = client.models.embed_content(model=MODEL, contents=content)
+    return res.embeddings[0].values
+
+
+def get_multimodal_embedding(text: str, image: Image.Image) -> list[float]:
+    """テキストと画像を1つのマルチモーダル入力として埋め込む.
+
+    ``types.Content`` に複数の ``Part`` (テキスト + 画像) をまとめて渡すことで、
+    両モダリティの情報を反映した単一の埋め込みベクトルが得られる。
+    cross-modal (どちらか一方) ではなく multimodal (両方を組み合わせ) クエリ。
+
+    Args:
+        text: クエリの一部としてのテキスト。
+        image: クエリの一部としての画像。
+
+    Returns:
+        テキスト + 画像の組み合わせを表現する単一の埋め込みベクトル。
+    """
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    content = types.Content(
+        parts=[
+            types.Part.from_text(text=text),
+            types.Part.from_bytes(data=buf.getvalue(), mime_type="image/png"),
+        ]
+    )
     res = client.models.embed_content(model=MODEL, contents=content)
     return res.embeddings[0].values
 
@@ -148,6 +178,20 @@ def main() -> None:
     query_img = make_gradient("#FF6B35", "#FFC300")
     print("Query (image): orange-yellow gradient (sunset-like)")
     for score, item in search(query_img, db):
+        print(f"  {score:.4f}  [{item['type']:5}] {item['content']}")
+    print()
+
+    # Multimodal query: text + image を1つのクエリとして組み合わせる
+    mm_text = "日本"
+    mm_image = make_gradient("#FFB7C5", "#FF69B4")  # cherry-blossom-like pink
+    print(f"Query (multimodal): text={mm_text!r} + image=pink gradient (cherry-blossom-like)")
+    mm_vec = get_multimodal_embedding(mm_text, mm_image)
+    scored = sorted(
+        ((cosine_similarity(mm_vec, item["vector"]), item) for item in db),
+        key=lambda x: x[0],
+        reverse=True,
+    )
+    for score, item in scored[:3]:
         print(f"  {score:.4f}  [{item['type']:5}] {item['content']}")
 
 
