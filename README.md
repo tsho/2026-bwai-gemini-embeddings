@@ -64,6 +64,26 @@ GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/vertex-sa.json
 
 `USE_VERTEX=true` が立っていれば API キーは無視され、Vertex AI 経由（ADC 認証）になる。サーバを Ctrl-C で止めて `uv run uvicorn main:app --reload` で再起動。
 
+## Vector DB を LanceDB に切り替える
+
+既定は in-memory `list[dict]` + pickle (`db.pkl`) ですが、永続化と ANN を専用 DB に肩代わりさせたいときは LanceDB に切り替えられます。
+
+```bash
+# .env
+USE_LANCE=true
+```
+
+`USE_LANCE=true` で起動すると、ローカルの `lance_db/` ディレクトリに [LanceDB](https://lancedb.github.io/lancedb/)（Rust 製の埋め込み型ベクトル DB）のテーブルが作られ、追加・検索・統計はすべてそちら経由になります。`db.pkl` には触れません（戻したいときは `USE_LANCE` を外して再起動するだけ）。
+
+uvicorn の起動ログにどちらを使っているかが表示されます。
+
+```
+INFO:     Embedding backend: AI Studio (GEMINI_API_KEY)
+INFO:     Vector DB: LanceDB (lance_db, 0 items loaded)
+```
+
+> 注意: backend を切り替えてもデータの自動移行はしません。LanceDB に切り替えた直後は空インデックスから始まるので、必要に応じて `seed.py` で再投入してください。
+
 ## デモデータ投入
 
 サーバー起動中に以下を実行すると、テキスト30件 + 画像20件 = 計50件のデモデータが登録される。
