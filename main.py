@@ -70,6 +70,7 @@ def save_db() -> None:
 
 
 _db: list[dict[str, Any]] = load_db()
+_logger.info("Vector DB: list[dict] (in-memory + %s, %d items loaded)", _DB_PATH, len(_db))
 
 _EMBEDDING_MODEL = "gemini-embedding-2-preview"
 
