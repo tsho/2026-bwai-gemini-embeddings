@@ -1,6 +1,7 @@
 # Uploaded images & DB
 uploads/
 db.pkl
+lance_db/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

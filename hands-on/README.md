@@ -14,6 +14,7 @@ Gemini Embedding API の基本（`embed_content` でベクトルが得られる�
 | 2 | クロスモーダル化（同じ関数に画像を渡す） | テキストと画像が同じベクトル空間に乗る感覚 |
 | 3 | Web API + UI 化（FastAPI + 永続化） | 検索システムを"使える形"に組み立てる実装パターン |
 | 4 | 実用化に向けた発展（任意） | プロダクションへの橋渡し |
+| 5 | 本物のベクトル DB に置き換え（LanceDB） | `list[dict]` → 専用 DB への移行が "差し替え" で済む感覚 |
 
 各STEPは前のSTEPに**最小の差分**を加えていく形になっています。STEP1〜2 は1つのスクリプトで完結し、STEP3 で初めて Web フレームワークが登場します。
 
@@ -32,8 +33,12 @@ hands-on/
 │   ├── main.py          # FastAPI 版（永続化あり）
 │   └── static/
 │       └── index.html   # 配布済みの Web UI(ハンズオン対象外)
-└── step4/
-    └── main.py          # task_type / output_dimensionality 比較デモ
+├── step4/
+│   └── main.py          # task_type / output_dimensionality 比較デモ
+└── step5/
+    ├── main.py          # step3 の DB を LanceDB に差し替えた版
+    └── static/
+        └── index.html   # step3 と同じ UI
 ```
 
 ---
@@ -197,13 +202,73 @@ Gemini Embedding 2 はデフォルト 3072 次元ですが、より低い次元�
 
 - pgvector（PostgreSQL拡張）
 - Qdrant / Milvus / Weaviate
+- LanceDB（埋め込み型・SQLite 的）
 - Vertex AI Vector Search
 
-などの ANN（近似最近傍）インデックスに置き換えます。**インターフェース（embed → 近傍検索）は同じ** なので、STEP3 の `db: list[dict]` の部分を差し替えるだけで移行できる、というのが感覚としてつかめると良いです。
+などの ANN（近似最近傍）インデックスに置き換えます。**インターフェース（embed → 近傍検索）は同じ** なので、STEP3 の `db: list[dict]` の部分を差し替えるだけで移行できる、というのが感覚としてつかめると良いです。具体例として **STEP 5** に LanceDB 版の完成品があります。
 
 ### 4-4. ハイブリッド検索
 
 ベクトル検索はセマンティックには強いですが、固有名詞や型番のような完全一致は苦手です。BM25 のようなキーワード検索とスコアを組み合わせる **ハイブリッド検索** が実プロダクトでは一般的です。
+
+---
+
+## STEP 5: 本物のベクトル DB に置き換え（LanceDB）
+
+完成品: `step5/main.py` ／ 実行: `uv run uvicorn hands-on.step5.main:app --reload` → http://localhost:8000
+
+### 作るもの
+
+STEP3 の **検索ロジックの外形は変えず**、内部の `_db: list[dict]` を **LanceDB** に置き換えます。LanceDB は Rust 製の埋め込み型（SQLite 的）ベクトル DB で、`pip install lancedb` だけで使えて、永続化と ANN 検索を肩代わりしてくれます。
+
+### 差分のかたち
+
+```python
+import lancedb
+import pyarrow as pa
+
+_lance = lancedb.connect("./lance_db")
+_table = _lance.create_table(
+    "items",
+    schema=pa.schema([
+        pa.field("vector", pa.list_(pa.float32(), 3072)),
+        pa.field("type", pa.string()),
+        pa.field("content", pa.string()),
+        pa.field("image_url", pa.string()),
+    ]),
+    exist_ok=True,
+)
+
+# 登録
+_table.add([{"vector": vec, "type": "text", "content": "...", "image_url": None}])
+
+# 検索（コサイン類似度の上位N件）
+hits = _table.search(query_vec).metric("cosine").limit(20).to_list()
+# hit["_distance"] は 1 - cosine_similarity なので、表示用は score = 1 - _distance
+```
+
+### 構造のポイント
+
+```
+hands-on/step5/
+├── main.py        # step3 から DB 周りだけ差し替え
+├── static/
+│   └── index.html # step3 と同じ UI(無改修)
+├── uploads/       # アップロード画像(実行時に作成)
+└── lance_db/      # LanceDB のデータ(実行時に作成)
+```
+
+### このSTEPで体感したいこと
+
+- **エンドポイントの外形・UI・検索の意味論はSTEP3と完全に同じ**。差し替わるのは DB 周りだけ。
+- 永続化（`db.pkl` の管理）が消えて、DB が肩代わりしてくれる。
+- 件数が増えても、`_table.create_index(...)` 1行で ANN インデックスを足せる（小規模では sequential scan で十分）。
+
+### 罠メモ
+
+- スキーマで `vector` の **固定次元** を指定する必要がある。`output_dimensionality` を変えるときは schema も合わせる。
+- `metric("cosine")` の `_distance` は **距離（小さいほど類似）**。UI 表示用の **類似度スコア** に直すには `1 - _distance`。
+- `text_results` と `image_results` を上位5件ずつ返すために、`limit(20)` で多めに取ってから振り分けている（型ごとの top-k フィルタを DB 側に押し込む書き方も可能）。
 
 ---
 
