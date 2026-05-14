@@ -32,7 +32,7 @@ uv run uvicorn main:app --reload
 
 ## Vertex AI に切り替える（429 対策）
 
-AI Studio の API キー（既定）は **per-minute クォータが ~15 RPM** と厳しく、`seed.py` のような連投で 429 RESOURCE_EXHAUSTED に当たります。複数人が同時に動かすハンズオンでは **GCP の Service Account + Vertex AI** に切り替えるのが楽です（クォータが 1500 RPM など大きく上がります）。
+AI Studio の API キー（既定）は **per-minute クォータが ~15 RPM** と厳しく、`seed.py` のような連投で 429 RESOURCE_EXHAUSTED に当たる可能性があります。そのようなクォータにひっかかるような使い方をする場合、 **GCP の Service Account + Vertex AI** に切り替えることで回避できます（クォータが 1500 RPM など大きく上がります）。
 
 ### 1. プロジェクトを用意する
 
@@ -44,11 +44,11 @@ AI Studio の API キー（既定）は **per-minute クォータが ~15 RPM** �
 
 ### 3. Service Account を作って JSON キーを発行する
 
-[Service Accounts 一覧](https://console.cloud.google.com/iam-admin/serviceaccounts) → **CREATE SERVICE ACCOUNT**:
+[Service Accounts 一覧](https://console.cloud.google.com/iam-admin/serviceaccounts) → **サービスアカウントの作成**:
 
-1. 名前: `vertex-embedding-user` 程度で OK
+1. 名前: `vertex-embedding-user` (or 任意の名前)
 2. ロール: **Vertex AI User** （`roles/aiplatform.user`）を付与
-3. 作成後、その SA を開く → **KEYS** タブ → **ADD KEY** → **Create new key** → **JSON** → ダウンロード
+3. 作成後、その SA を開く → **鍵** タブ → **キーを追加** → **新しい鍵を作成** → **JSON** → ダウンロード
 4. JSON ファイルをリポジトリ外の安全な場所に保管（例: `~/keys/vertex-sa.json`）
 
 > 直リンク（プロジェクト固定）: `https://console.cloud.google.com/iam-admin/serviceaccounts?project=<PROJECT_ID>`

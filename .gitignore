@@ -3,6 +3,10 @@ uploads/
 db.pkl
 lance_db/
 
+# Service account keys (keep the keys/ dir via .gitkeep, but never commit the JSON)
+keys/*
+!keys/.gitkeep
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
