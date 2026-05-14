@@ -25,7 +25,19 @@ from PIL import Image
 
 load_dotenv()
 
-_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+_USE_VERTEX = os.environ.get("USE_VERTEX", "").lower() in {"1", "true", "yes"}
+
+if _USE_VERTEX:
+    # Service Account 経由で Vertex AI を使う。クォータが緩いので、複数人の
+    # 同時実行や seed.py の連投にも耐えやすい。
+    # 認証は GOOGLE_APPLICATION_CREDENTIALS が指す JSON キー (ADC) で行う。
+    _client = genai.Client(
+        vertexai=True,
+        project=os.environ["GOOGLE_CLOUD_PROJECT"],
+        location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+    )
+else:
+    _client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 _UPLOAD_DIR = Path("uploads")
 _UPLOAD_DIR.mkdir(exist_ok=True)
