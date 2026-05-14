@@ -264,7 +264,7 @@ hands-on/step5/
 - 永続化（`db.pkl` の管理）が消えて、DB が肩代わりしてくれる。
 - 件数が増えても、`_table.create_index(...)` 1行で ANN インデックスを足せる（小規模では sequential scan で十分）。
 
-### 罠メモ
+### つまづきところ
 
 - スキーマで `vector` の **固定次元** を指定する必要がある。`output_dimensionality` を変えるときは schema も合わせる。
 - `metric("cosine")` の `_distance` は **距離（小さいほど類似）**。UI 表示用の **類似度スコア** に直すには `1 - _distance`。

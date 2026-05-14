@@ -10,13 +10,24 @@ Example:
 
 from __future__ import annotations
 
+import argparse
 import io
 import sys
+import time
 
 import httpx
 from PIL import Image, ImageDraw, ImageFont
 
 _BASE_URL = "http://localhost:8000"
+# Vertex AI の gemini-embedding-2 クォータが 5 RPM (= 12 秒/件) のため、
+# 1件ごとに少しマージンを取って 13 秒スリープする。
+_RATE_LIMIT_SECONDS = 13
+# 念のため、quota 起因の失敗 (429 / 500 / 503) は数回までリトライする。
+_MAX_RETRIES = 3
+_RETRY_WAIT_SECONDS = 60
+# デフォルトはハンズオン向けに少数件。`--full` で全件投入。
+_DEFAULT_TEXTS = 6
+_DEFAULT_IMAGES = 4
 
 _TEXTS = [
     "東京タワーは1958年に完成した電波塔で、高さは333メートルです",
@@ -114,11 +125,51 @@ def generate_image(color1: str, color2: str, label: str) -> bytes:
     return buf.getvalue()
 
 
-def main() -> None:
+def _post_with_retry(client: httpx.Client, path: str, **kwargs) -> httpx.Response:
+    """API を叩き、quota 起因の失敗 (429/500/503) は待ってリトライする.
+
+    Args:
+        client: 接続済みの httpx クライアント。
+        path: ``/api/index/text`` などのエンドポイントパス。
+        **kwargs: ``client.post`` にそのまま渡す引数 (``data`` / ``files`` など)。
+
+    Returns:
+        正常応答 (2xx) の ``httpx.Response``。
+
+    Raises:
+        httpx.HTTPStatusError: リトライ上限を超えても 2xx にならなかった場合。
+    """
+    for attempt in range(_MAX_RETRIES):
+        res = client.post(path, **kwargs)
+        if res.status_code in (429, 500, 503) and attempt < _MAX_RETRIES - 1:
+            print(
+                f"    got {res.status_code}, sleeping {_RETRY_WAIT_SECONDS}s before retry "
+                f"({attempt + 1}/{_MAX_RETRIES - 1})..."
+            )
+            time.sleep(_RETRY_WAIT_SECONDS)
+            continue
+        res.raise_for_status()
+        return res
+    raise RuntimeError("unreachable")  # _MAX_RETRIES > 0 なら必ず return か raise
+
+
+def main(*, full: bool = False) -> None:
     """``_TEXTS`` と ``_IMAGES`` を順番に API へ投入する.
+
+    Vertex AI の embedding クォータ (5 RPM) に収まるよう、1件ごとに
+    ``_RATE_LIMIT_SECONDS`` 秒のスリープを挟む。失敗時は
+    ``_post_with_retry`` がリトライする。
+
+    Args:
+        full: ``True`` なら ``_TEXTS`` / ``_IMAGES`` を丸ごと使う (合計 50 件)。
+            既定は ``False`` で、ハンズオン向けに ``_DEFAULT_TEXTS`` /
+            ``_DEFAULT_IMAGES`` 件に絞る。
 
     サーバーが起動していなければ案内メッセージを出して終了する。
     """
+    texts = _TEXTS if full else _TEXTS[:_DEFAULT_TEXTS]
+    images = _IMAGES if full else _IMAGES[:_DEFAULT_IMAGES]
+
     client = httpx.Client(base_url=_BASE_URL, timeout=60)
 
     # Check server is running
@@ -129,29 +180,50 @@ def main() -> None:
         print("Start it first: uv run uvicorn main:app --reload")
         sys.exit(1)
 
-    total = len(_TEXTS) + len(_IMAGES)
+    total = len(texts) + len(images)
     count = 0
 
-    print(f"Registering {total} demo items...")
+    eta_minutes = (total * _RATE_LIMIT_SECONDS) / 60
+    mode = "full" if full else "default"
+    print(
+        f"Registering {total} demo items ({mode}) at ~{60 // _RATE_LIMIT_SECONDS} RPM "
+        f"(sleeping {_RATE_LIMIT_SECONDS}s between each, ETA ~{eta_minutes:.1f} min)..."
+    )
 
-    for text in _TEXTS:
+    for text in texts:
         count += 1
         print(f"  [{count}/{total}] text: {text[:40]}...")
-        res = client.post("/api/index/text", data={"text": text})
-        res.raise_for_status()
+        _post_with_retry(client, "/api/index/text", data={"text": text})
+        if count < total:
+            time.sleep(_RATE_LIMIT_SECONDS)
 
-    for name, c1, c2, label in _IMAGES:
+    for name, c1, c2, label in images:
         count += 1
         print(f"  [{count}/{total}] image: {label}")
         img_bytes = generate_image(c1, c2, label)
-        res = client.post(
+        _post_with_retry(
+            client,
             "/api/index/image",
             files={"file": (f"{name}.png", img_bytes, "image/png")},
         )
-        res.raise_for_status()
+        if count < total:
+            time.sleep(_RATE_LIMIT_SECONDS)
 
     print(f"Done! {total} items registered.")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description=(
+            "Seed demo items into the running cross-modal search server. "
+            "Defaults to a small subset suitable for the 5 RPM quota; "
+            "pass --full to register all 50 items (takes ~11 minutes)."
+        )
+    )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Use the full dataset (all _TEXTS / _IMAGES, ~50 items)",
+    )
+    args = parser.parse_args()
+    main(full=args.full)
