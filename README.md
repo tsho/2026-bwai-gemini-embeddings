@@ -1,5 +1,7 @@
 # Cross-Modal Search Demo
 
+[English version](README.en.md)
+
 Gemini Embedding 2 (`gemini-embedding-2-preview`) を使った、テキストと画像のクロスモーダル検索デモアプリ。BwAI 2026 向け。
 
 ## Colab Notebook
