@@ -135,12 +135,12 @@ flowchart LR
 
     subgraph Embedding["Embedding"]
         AIStudio["AI Studio<br/>(GEMINI_API_KEY)"]
-        Vertex["Vertex AI<br/>(Service Account / ADC)  (toggle: USE_VERTEX)"]
+        Vertex["Vertex AI<br/>(Service Account / ADC)<br/>(toggle: USE_VERTEX)"]
     end
 
     subgraph VectorDB["Vector store"]
         Memory["list[dict] + pickle<br/>db.pkl"]
-        Lance["LanceDB<br/>lance_db/  (toggle: USE_LANCE=true)"]
+        Lance["LanceDB<br/>lance_db/<br/>(toggle: USE_LANCE=true)"]
     end
 
     Browser -->|HTTP| Endpoints
@@ -294,12 +294,12 @@ flowchart LR
 
     subgraph Embedding["Embedding"]
         AIStudio["AI Studio<br/>(GEMINI_API_KEY)"]
-        Vertex["Vertex AI<br/>(Service Account / ADC)  (toggle: USE_VERTEX)"]
+        Vertex["Vertex AI<br/>(Service Account / ADC)<br/>(toggle: USE_VERTEX)"]
     end
 
     subgraph VectorDB["Vector store"]
         Memory["list[dict] + pickle<br/>db.pkl"]
-        Lance["LanceDB<br/>lance_db/  (toggle: USE_LANCE=true)"]
+        Lance["LanceDB<br/>lance_db/<br/>(toggle: USE_LANCE=true)"]
     end
 
     Browser -->|HTTP| Endpoints
