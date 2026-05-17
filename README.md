@@ -133,14 +133,14 @@ flowchart LR
 
     Endpoints["FastAPI (main.py)<br/>/api/index/* /api/search /api/stats"]
 
-    subgraph Embedding["Embedding (toggle: USE_VERTEX)"]
+    subgraph Embedding["Embedding"]
         AIStudio["AI Studio<br/>(GEMINI_API_KEY)"]
-        Vertex["Vertex AI<br/>(Service Account / ADC)"]
+        Vertex["Vertex AI<br/>(Service Account / ADC)  (toggle: USE_VERTEX)"]
     end
 
-    subgraph VectorDB["Vector store (toggle: USE_LANCE)"]
+    subgraph VectorDB["Vector store"]
         Memory["list[dict] + pickle<br/>db.pkl"]
-        Lance["LanceDB<br/>lance_db/"]
+        Lance["LanceDB<br/>lance_db/  (toggle: USE_LANCE=true)"]
     end
 
     Browser -->|HTTP| Endpoints
@@ -292,14 +292,14 @@ flowchart LR
 
     Endpoints["FastAPI (main.py)<br/>/api/index/* /api/search /api/stats"]
 
-    subgraph Embedding["Embedding (toggle: USE_VERTEX)"]
+    subgraph Embedding["Embedding"]
         AIStudio["AI Studio<br/>(GEMINI_API_KEY)"]
-        Vertex["Vertex AI<br/>(Service Account / ADC)"]
+        Vertex["Vertex AI<br/>(Service Account / ADC)  (toggle: USE_VERTEX)"]
     end
 
-    subgraph VectorDB["Vector store (toggle: USE_LANCE)"]
+    subgraph VectorDB["Vector store"]
         Memory["list[dict] + pickle<br/>db.pkl"]
-        Lance["LanceDB<br/>lance_db/"]
+        Lance["LanceDB<br/>lance_db/  (toggle: USE_LANCE=true)"]
     end
 
     Browser -->|HTTP| Endpoints
