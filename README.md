@@ -34,7 +34,7 @@ uv run uvicorn main:app --reload
 
 ## Vertex AI に切り替える（429 対策）
 
-AI Studio の API キー（既定）は **per-minute クォータが ~15 RPM** と厳しく、`seed.py` のような連投で 429 RESOURCE_EXHAUSTED に当たる可能性があります。そのようなクォータにひっかかるような使い方をする場合、 **GCP の Service Account + Vertex AI** に切り替えることで回避できます（クォータが 1500 RPM など大きく上がります）。
+AI Studio の API キー（既定）は **per-minute クォータが ~15 RPM** と厳しく、`seed.py` のような連投で 429 RESOURCE_EXHAUSTED に当たる可能性があります。そのようなクォータにひっかかるような使い方をする場合、 **GCP の Service Account + Vertex AI** に切り替えることで回避できます（クォータが 15 RPM など大きく上がります。こちらの値は著者が個人的に観測している限り、頻繁に変わるので最新情報を確認してください）。
 
 ### 1. プロジェクトを用意する
 
@@ -193,7 +193,7 @@ Open http://localhost:8000 in your browser.
 
 ## Switching to Vertex AI (avoiding 429s)
 
-As of May 14, 2026, the AI Studio API key (default) has a strict **per-minute quota of no more than 10 RPM**, so bursty usage like `seed.py` can hit `429 RESOURCE_EXHAUSTED`. If you expect to push enough traffic to bump into the quota, switch to **GCP Service Account + Vertex AI** for a much higher ceiling (1500 RPM by default, with room to request more).
+As of May 14, 2026, the AI Studio API key (default) has a strict **per-minute quota of no more than 10 RPM**, so bursty usage like `seed.py` can hit `429 RESOURCE_EXHAUSTED`. If you expect to push enough traffic to bump into the quota, switch to **GCP Service Account + Vertex AI** for a higher ceiling (around 15 RPM by default — the author has observed this value changing frequently, so check the latest quota information).
 
 ### 1. Prepare a project
 
